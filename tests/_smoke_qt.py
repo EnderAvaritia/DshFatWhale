@@ -45,6 +45,7 @@ from widget import WhaleWindow
 
 app = QApplication(sys.argv)
 win = WhaleWindow()
+win.set_persistent(True)  # 确定性：不依赖用户 config.json 里 persistent_bubble 的保存值
 
 failures = []
 
