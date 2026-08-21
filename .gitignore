@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 本地配置含 API Key，禁止入库（同 dafeiyu-pet 约定）
+config.json
+.dshw-usage.json
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
