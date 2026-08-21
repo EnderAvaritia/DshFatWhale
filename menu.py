@@ -158,7 +158,7 @@ def create_tray(widget) -> QSystemTrayIcon:
     """系统托盘：左键切换显隐，右键同款菜单（穿透后靠它解除）。"""
     icon = QIcon(os.path.join(assets_dir(), "icon.ico"))
     tray = QSystemTrayIcon(icon, widget)
-        tray.setToolTip("DshFatWhale · DeepSeek 余额鲸鱼")
+    tray.setToolTip("DshFatWhale · DeepSeek 余额鲸鱼")
     tray.setContextMenu(build_menu(widget))
     tray.activated.connect(lambda reason: _on_tray_activated(reason, tray, widget))
     tray.show()
