@@ -126,8 +126,7 @@ def load_line_groups(md_path=LINE_MD_PATH):
             click = sec["lines"]
         else:
             groups.append((sec["weight"], sec["style"], sec["multi"], sec["lines"]))
-    if not groups:
-        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES, click
+    # 注意：文件存在但解析为空时如实返回（不静默回退默认，避免格式错误被掩盖）
     return groups, drag, click
 
 

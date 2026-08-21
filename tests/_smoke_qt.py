@@ -98,6 +98,11 @@ def finish():
     # 三连句组应为多行整组气泡
     multi = [g for g in win._line_groups if g[2]]
     check("三连句多行组", len(multi) == 1 and len(multi[0][3]) == 3)
+    # 防回归：台词表.md 必须是机器可读格式（含"权重"头与点击触发分组）
+    md_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "台词表.md")
+    with open(md_path, encoding="utf-8") as f:
+        md_text = f.read()
+    check("台词表.md 为可解析格式", "（权重" in md_text and "## 点击触发" in md_text)
 
     # 8b. 点击循环状态机（走真实 mouseReleaseEvent 路径）
     from PySide6.QtCore import Qt
