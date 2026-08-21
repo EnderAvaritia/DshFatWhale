@@ -1,0 +1,90 @@
+# DeepSeek 余额鲸鱼桌宠 🐋
+
+DeepSeek-Balance-Whale-Widget（DSH 小鲸鱼余额挂件）的**独立运行桌面版**：不依赖 DSH、不依赖浏览器，一只透明置顶的小鲸鱼趴在屏幕角落，帮你盯着 DeepSeek 账户余额。
+
+实现参照 [dafeiyu-pet](https://github.com/1190fasheqi/dafeiyu-pet)（Python + PySide6 透明桌宠）的工程方式，行为对齐原 web 挂件。
+
+## 功能
+
+- 💰 **余额 + 今日已用**：数字滚动动画；60 秒自动刷新 + 点击鲸鱼手动刷新；网络瞬时抖动自动沿用最近余额不报错
+- 📊 **今日已用两种模式**（右键菜单切换，默认记账）：
+  - **小鲸鱼记账（推荐，免令牌）**：观测余额后用余额差值自动记账（`.dshw-usage.json`，跨天自动归零归档）
+  - **实时·令牌**：填平台令牌后按**峰谷定价**（高峰 9–12 / 14–18 点）实时换算今日已用
+- 🖱️ **拖拽 + 四边吸附**：默认趴屏幕右下角，拖到屏幕四分之一区域自动吸附；左吸附时整体**水平镜像翻转**
+- 🧸 **Q 弹按压**：按下压扁、松手回弹，配按压/松手音效（小黄鸭 / 音效1 两套可切，音量可调）
+- 💬 **气泡台词**：点击切换随机台词（原挂件 6 组加权 + dafeiyu 梗 + 灰色斜体"思维链心声"），5 秒自动收起
+- 🎚️ **右键菜单**（桌面版"汉堡菜单"）：用量模式 / 音效 / 音量 / 大小 / 设置 Key / 置顶 / 鼠标穿透 / 开机自启 / 退出
+- 🗔 **系统托盘**：左键切换显隐，右键同款菜单（穿透后靠它解除）
+- 📐 呼吸 / 摇摆 / 蹦跳小动画，位置、大小、吸附状态、音效、模式全部记忆（`config.json`）
+
+## 运行
+
+需要 **Python 3.11+**（已在 Python 3.14.5 验证）。
+
+```powershell
+# 首次：创建虚拟环境并装依赖
+python -m venv .venv
+.\.venv\Scripts\pip install -r requirements.txt
+
+# 运行：双击 启动鲸鱼.bat，或
+.\.venv\Scripts\pythonw.exe 鲸鱼.py
+```
+
+## 配置 API Key
+
+余额接口需要 `DEEPSEEK_API_KEY`，两种配置方式（环境变量优先）：
+
+1. **环境变量**（推荐，不落盘）：
+   ```powershell
+   setx DEEPSEEK_API_KEY "sk-xxxx"
+   ```
+2. **右键菜单 → 设置 DeepSeek Key…**（存入 `config.json`，已被 `.gitignore` 排除）
+
+实时·令牌模式还需在右键菜单填**平台令牌**（浏览器 DevTools 里用量请求的 `Authorization` 头）。
+
+## 目录结构
+
+```text
+鲸鱼.py            入口：QApplication、config 加载、主窗口 + 托盘
+widget.py          主窗口：透明置顶、QPainter 绘制、tick 动画、拖拽/吸附/镜像/按压/气泡
+balance.py         数据层：余额拉取、记账模式、令牌模式（峰谷定价）、缓存与瞬断兜底
+sound.py           QSoundEffect 音效：两套音效组、音量
+menu.py            右键菜单 + 系统托盘 + 开机自启
+config.py          config.json 读写、路径解析、Key 解析（环境变量优先）
+assets/            鲸鱼图 DSniang1.png、音效 Ya1/Ya2/D1/D2.mp3、托盘图标 icon.ico
+启动鲸鱼.bat       启动脚本（自动选 .venv 或系统 pythonw）
+鲸鱼.spec          PyInstaller 打包配置
+tests/             balance 逻辑单测 + Qt 冒烟测试
+```
+
+## 打包成独立 exe（可分享，无需 Python）
+
+```powershell
+.\.venv\Scripts\pip install pyinstaller
+.\.venv\Scripts\pyinstaller 鲸鱼.spec
+```
+
+产物在 `dist/DeepSeekWhale.exe`，双击即用（杀毒软件可能对 PyInstaller 产物误报，加信任即可）。exe 与 `config.json`、账本文件同级存放，整个文件夹可拷走。
+
+## 验证
+
+```powershell
+.\.venv\Scripts\python.exe tests\test_balance.py   # 逻辑单测
+.\.venv\Scripts\python.exe tests\_smoke_qt.py      # Qt 冒烟（offscreen）
+```
+
+## 常见问题
+
+- **显示"未配置 DEEPSEEK_API_KEY"**：见上方 Key 配置。
+- **今日已用显示 --**：记账模式需先跑一次余额观测（60 秒内自动完成）；令牌模式需配置平台令牌。
+- **没有声音**：确认 `assets/*.mp3` 存在；缺失时静默降级。
+- **改代码不生效**：重启程序即可（无缓存问题）。
+
+## 致谢
+
+- 逻辑与素材移植自 [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)（MIT）
+- 工程实现参照 [1190fasheqi/dafeiyu-pet](https://github.com/1190fasheqi/dafeiyu-pet)（MIT）
+
+## 协议
+
+MIT
