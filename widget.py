@@ -79,18 +79,19 @@ def load_line_groups(md_path=LINE_MD_PATH):
       - 台词一
       - 台词二
     属性：大字=加大加粗；心声=灰色斜体；多行=整组台词拼成一个气泡（多行显示）。
-    特殊分组（无权重）：
-      ## 点击触发   —— 点击鲸鱼时优先说这里的话
+    特殊分组（可加权重，默认 5）：
+      ## 点击触发（权重 N） —— 点击鲸鱼时参与加权随机
       ## 拖拽后随机 —— 拖拽松手后随机说
     解析失败或文件缺失 → 返回内置默认。
-    返回 (groups, drag_lines, click_lines)；groups 为 [(权重, 样式, 多行, [台词...]), ...]
+    返回 (groups, drag_lines, click_lines, click_weight)。
     """
     try:
         with open(md_path, encoding="utf-8") as f:
             text = f.read()
     except OSError:
-        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES, []
+        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES, [], 5
     group_re = re.compile(r"^## (.+)（权重 (\d+)(.*)）$")
+    specials = ("## 点击触发", "## 拖拽后随机")
     sections = {}
     cur_name = None
     for raw in text.splitlines():
@@ -99,14 +100,19 @@ def load_line_groups(md_path=LINE_MD_PATH):
             m = group_re.match(line)
             if m:
                 attrs = m.group(3)
-                cur_name = line[3:].strip()
-                sections[cur_name] = {
-                    "weight": int(m.group(2)),
-                    "style": "B" if "大字" in attrs else ("inner" if "心声" in attrs else "A"),
-                    "multi": "多行" in attrs,
-                    "lines": [],
-                }
-            elif line in ("## 点击触发", "## 拖拽后随机"):
+                name = m.group(1).strip()
+                if name in ("点击触发", "拖拽后随机"):
+                    sections[name] = {"weight": int(m.group(2)), "style": "A", "multi": False, "lines": []}
+                    cur_name = name
+                else:
+                    cur_name = line[3:].strip()
+                    sections[cur_name] = {
+                        "weight": int(m.group(2)),
+                        "style": "B" if "大字" in attrs else ("inner" if "心声" in attrs else "A"),
+                        "multi": "多行" in attrs,
+                        "lines": [],
+                    }
+            elif line in specials:
                 cur_name = line[3:].strip()
                 sections[cur_name] = {"weight": None, "style": "A", "multi": False, "lines": []}
             else:
@@ -117,6 +123,7 @@ def load_line_groups(md_path=LINE_MD_PATH):
     groups = []
     drag = DEFAULT_DRAG_LINES
     click = []
+    click_weight = 5  # 点击触发池默认权重
     for name, sec in sections.items():
         if not sec["lines"]:
             continue
@@ -124,10 +131,12 @@ def load_line_groups(md_path=LINE_MD_PATH):
             drag = sec["lines"]
         elif name == "点击触发":
             click = sec["lines"]
+            if sec["weight"] is not None:
+                click_weight = sec["weight"]
         else:
             groups.append((sec["weight"], sec["style"], sec["multi"], sec["lines"]))
     # 注意：文件存在但解析为空时如实返回（不静默回退默认，避免格式错误被掩盖）
-    return groups, drag, click
+    return groups, drag, click, click_weight
 
 
 def fmt(amount, currency):
@@ -156,7 +165,7 @@ class WhaleWindow(QWidget):
         self.whale_img = QImage(os.path.join(assets_dir(), "DSniang1.png"))
 
         # 台词表（用户可编辑）
-        self._line_groups, self._drag_lines, self._click_lines = load_line_groups()
+        self._line_groups, self._drag_lines, self._click_lines, self._click_weight = load_line_groups()
 
         # 常驻余额气泡开关（余额+峰谷常驻显示；点击鲸鱼时临时切台词，说完自动回落）
         self.persistent = bool(self.cfg.get("persistent_bubble", True))
@@ -466,9 +475,9 @@ class WhaleWindow(QWidget):
                 groups.append((w, [(ln, style, "", False) for ln in lines], style == "inner"))
             else:
                 groups.append((w, [(random.choice(lines), style, "", True)], style == "inner"))
-        # 点击触发池：默认权重 5，参与随机
+        # 点击触发池：可配权重（默认 5），参与随机
         if self._click_lines:
-            groups.append((5, [(random.choice(self._click_lines), "A", "", True)], False))
+            groups.append((self._click_weight, [(random.choice(self._click_lines), "A", "", True)], False))
         total = sum(w for w, _l, _i in groups)
         if total <= 0:
             return [("（台词表为空，右键检查台词表.md）", "A", "", True)], False

@@ -30,17 +30,22 @@ with tempfile.TemporaryDirectory() as td:
             "## 日常（权重 5）\n- 甲\n- 乙\n"
             "## 心声（权重 2，心声）\n- 内心\n"
             "## 多行（权重 1，多行）\n- 一\n- 二\n"
-            "## 点击触发\n- 点我\n- 再点我\n"
+            "## 点击触发（权重 9）\n- 点我\n- 再点我\n"
             "## 拖拽后随机\n- 拖我\n"
             "## 内置动态（跳过）\n- 不会被读取\n"
         )
-    g, d, c = load_line_groups(md)
+    g, d, c, cw = load_line_groups(md)
     assert len(g) == 4, g
     assert g[0] == (100, "A", False, ["我的梗"]), "我的台词组应为最高权重 100 且在首位"
     assert g[2][1] == "inner" and g[3][2] is True, g
     assert c == ["点我", "再点我"], c
     assert d == ["拖我"], d
-print("  ok: 台词表解析器（含点击触发/拖拽/心声/多行/跳过）")
+    assert cw == 9, "点击触发可配权重"
+    with open(os.path.join(td, "t2.md"), "w", encoding="utf-8") as f:
+        f.write("## 点击触发\n- 甲\n")  # 无权重 → 默认 5
+    _, _, _, cw2 = load_line_groups(os.path.join(td, "t2.md"))
+    assert cw2 == 5, "点击触发默认权重应为 5"
+print("  ok: 台词表解析器（含点击触发权重/拖拽/心声/多行/跳过）")
 
 from menu import build_menu, create_tray
 from widget import WhaleWindow
