@@ -1,0 +1,19 @@
+{
+  "usage_mode": "ledger",
+  "persistent_bubble": true,
+  "size": 1.0,
+  "sound_set": "duck",
+  "vol": 0.9,
+  "sound_on": true,
+  "ds_api_key": "sk-你的DeepSeekAPIKey",
+  "platform_token": "",
+  "topmost": true,
+  "passthrough": false,
+  "autostart": false,
+  "x": null,
+  "y": null,
+  "h": "right",
+  "v": "bottom",
+  "h_off": 0,
+  "v_off": 0
+}

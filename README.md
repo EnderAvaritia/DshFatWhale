@@ -58,6 +58,29 @@ python -m venv .venv
 - **记账模式（默认，推荐）**：只用 API Key，用余额差值推算今日消耗，零配置零风险
 - **实时·令牌模式**：额外填平台令牌，拿真实用量明细（含峰谷定价换算），代价是会过期、需维护
 
+## 配置文件（config.json）
+
+首次运行自动生成 `config.json`（全是默认值，多数项也可在右键菜单里改）。`config.example.json` 是**合法可复制**的模板——想手改就把它复制成 `config.json` 再改值。编辑后重启生效。
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `usage_mode` | `"ledger"` | 用量模式：`ledger` 小鲸鱼记账（默认）/ `token` 实时·令牌 |
+| `persistent_bubble` | `true` | 常驻余额气泡（余额+今日已用+峰谷时段），右键菜单可关 |
+| `size` | `1.0` | 显示大小档位 |
+| `sound_set` | `"duck"` | 音效：`duck` 小黄鸭 / `fx1` 音效1 |
+| `vol` | `0.9` | 音量 0~1 |
+| `sound_on` | `true` | 是否播放音效 |
+| `ds_api_key` | `""` | 余额 API Key（环境变量 `DEEPSEEK_API_KEY` 优先） |
+| `platform_token` | `""` | 平台令牌（实时·令牌模式用，可留空） |
+| `topmost` | `true` | 置顶 |
+| `passthrough` | `false` | 鼠标穿透（穿透后靠托盘菜单解除） |
+| `autostart` | `false` | 开机自启 |
+| `x` / `y` | `null` | 手动位置；`null` 表示按吸附锚点自动摆放 |
+| `h` | `"right"` | 水平吸附：`left` / `right` / `null`（`null`=自由） |
+| `v` | `"bottom"` | 垂直吸附：`top` / `bottom` / `null`（`null`=自由） |
+| `h_off` / `v_off` | `0` | 吸附偏移量（px），拖拽松手时自动写入 |
+
+注意：`config.json` 含明文 API Key，已在 `.gitignore` 中排除、不会入库；`config.example.json` 是公开模板。
 
 ## 目录结构
 
@@ -68,6 +91,7 @@ balance.py         数据层：余额拉取、记账模式、令牌模式（峰�
 sound.py           QSoundEffect 音效：两套音效组、音量
 menu.py            右键菜单 + 系统托盘 + 开机自启
 config.py          config.json 读写、路径解析、Key 解析（环境变量优先）
+config.example.json  配置模板（复制成 config.json 改值即可）
 assets/            鲸鱼图 DSniang1.png、音效 Ya1/Ya2/D1/D2.mp3、托盘图标 icon.ico
 台词表.md          台词数据（用户可编辑：加一行 `- 台词` 即可新增）
 启动鲸鱼.bat       启动脚本（自动选 .venv 或系统 pythonw）
