@@ -23,7 +23,7 @@ from menu import build_menu
 from sound import SoundManager
 
 BASE_H = 300          # 鲸鱼绘制高度（size=1.0 时）
-BUBBLE_H = 92         # 气泡区高度（窗口顶部）
+BUBBLE_H = 122        # 气泡区高度（窗口顶部）：4 行常驻气泡(约110px) + 余量
 MARGIN = 6
 TICK = 20             # ms，动画循环
 REFRESH_MS = 60000    # 自动刷新
@@ -252,8 +252,10 @@ class WhaleWindow(QWidget):
             x = max(geo.left(), min(geo.right() - w, self.x()))
         if v_anchor == "top":
             y = geo.top() + v_off
-        else:
+        elif v_anchor == "bottom":
             y = geo.bottom() - h - v_off
+        else:
+            y = max(geo.top(), min(geo.bottom() - h, self.y()))
         self.move(int(x), int(y))
         self._update_mirror()
 
@@ -270,8 +272,10 @@ class WhaleWindow(QWidget):
             self.cfg["h"], self.cfg["h_off"] = None, max(0, self.x() - geo.left())
         if cy < geo.top() + geo.height() / 4:
             self.cfg["v"], self.cfg["v_off"] = "top", 0
+        elif cy > geo.top() + geo.height() * 3 / 4:
+            self.cfg["v"], self.cfg["v_off"] = "bottom", 0  # 底部四分之一区 → 贴底吸附
         else:
-            self.cfg["v"], self.cfg["v_off"] = "bottom", max(0, geo.bottom() - (self.y() + self.height()))
+            self.cfg["v"], self.cfg["v_off"] = None, 0      # 中部 → 自由悬停
         self.settle()
 
     def snap_into_screen(self):
