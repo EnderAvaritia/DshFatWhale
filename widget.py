@@ -75,19 +75,21 @@ def load_line_groups(md_path=LINE_MD_PATH):
     """从 台词表.md 读取可编辑台词组（用户加台词只改这个文件）。
 
     格式（每行一条）：
-      ## 分组名（权重 N[, 大字|心声][, 多行]）
+      ## 分组名（权重 N[, 大字|心声|多行]）
       - 台词一
       - 台词二
     属性：大字=加大加粗；心声=灰色斜体；多行=整组台词拼成一个气泡（多行显示）。
-    特殊分组：`## 拖拽后随机`（无权重），松手后随机说。
+    特殊分组（无权重）：
+      ## 点击触发   —— 点击鲸鱼时优先说这里的话
+      ## 拖拽后随机 —— 拖拽松手后随机说
     解析失败或文件缺失 → 返回内置默认。
-    返回 (groups, drag_lines)；groups 为 [(权重, 样式, 多行, [台词...]), ...]
+    返回 (groups, drag_lines, click_lines)；groups 为 [(权重, 样式, 多行, [台词...]), ...]
     """
     try:
         with open(md_path, encoding="utf-8") as f:
             text = f.read()
     except OSError:
-        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES
+        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES, []
     group_re = re.compile(r"^## (.+)（权重 (\d+)(.*)）$")
     sections = {}
     cur_name = None
@@ -104,8 +106,8 @@ def load_line_groups(md_path=LINE_MD_PATH):
                     "multi": "多行" in attrs,
                     "lines": [],
                 }
-            elif line == "## 拖拽后随机":
-                cur_name = "拖拽后随机"
+            elif line in ("## 点击触发", "## 拖拽后随机"):
+                cur_name = line[3:].strip()
                 sections[cur_name] = {"weight": None, "style": "A", "multi": False, "lines": []}
             else:
                 cur_name = None  # 信息性分区（如"内置动态台词"），跳过
@@ -114,16 +116,19 @@ def load_line_groups(md_path=LINE_MD_PATH):
             sections[cur_name]["lines"].append(line[2:].strip())
     groups = []
     drag = DEFAULT_DRAG_LINES
+    click = []
     for name, sec in sections.items():
         if not sec["lines"]:
             continue
         if name == "拖拽后随机":
             drag = sec["lines"]
+        elif name == "点击触发":
+            click = sec["lines"]
         else:
             groups.append((sec["weight"], sec["style"], sec["multi"], sec["lines"]))
     if not groups:
-        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES
-    return groups, drag
+        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES, click
+    return groups, drag, click
 
 
 def fmt(amount, currency):
@@ -152,7 +157,7 @@ class WhaleWindow(QWidget):
         self.whale_img = QImage(os.path.join(assets_dir(), "DSniang1.png"))
 
         # 台词表（用户可编辑）
-        self._line_groups, self._drag_lines = load_line_groups()
+        self._line_groups, self._drag_lines, self._click_lines = load_line_groups()
 
         # 服务
         self.engine = BalanceEngine(LEDGER_PATH)
@@ -588,20 +593,29 @@ class WhaleWindow(QWidget):
             if random.random() < 0.5 and self._drag_lines:
                 self.say(random.choice(self._drag_lines))
         else:
-            # 单击
+            # 单击（气泡内/外行为一致）：
+            #   定义了点击触发台词 → 关闭 → 点击台词 → 余额 → 关闭
+            #   未定义            → 关闭 → 余额 → 随机台词 → 关闭
             self.drag_start = None
-            pos = e.position()
-            if self.bubble_visible and self.bubble_rect.contains(pos):
+            if self.bubble_visible:
                 if self.bubble_random:
-                    self.hide_bubble()
+                    # 当前是台词（点击触发/随机）→ 切到余额；无点击台词时直接关闭
+                    if self._click_lines:
+                        self.show_bubble()
+                        self.refresh(True)
+                    else:
+                        self.hide_bubble()
                 else:
-                    self.show_random_lines()
-            else:
-                if self.bubble_visible:
-                    if self.bubble_random:
+                    # 当前是余额 → 有关键台词则关闭，否则切随机台词
+                    if self._click_lines:
                         self.hide_bubble()
                     else:
                         self.show_random_lines()
+            else:
+                # 气泡关闭时点击：优先说"点击触发"组的话，否则显示余额
+                if self._click_lines:
+                    self.say(random.choice(self._click_lines))
+                    self.refresh(True)
                 else:
                     self.show_bubble()
                     self.refresh(True)

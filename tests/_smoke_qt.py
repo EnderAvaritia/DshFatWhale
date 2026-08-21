@@ -18,6 +18,28 @@ import balance as balance_mod
 balance_mod.fetch_balance = lambda key: {"ok": False, "code": "NO_KEY", "error": "test-no-network"}
 balance_mod.fetch_usage = lambda token: {"error": "test-no-network"}
 
+# 台词表解析器单测（无需 Qt）
+import tempfile
+from widget import load_line_groups
+
+with tempfile.TemporaryDirectory() as td:
+    md = os.path.join(td, "t.md")
+    with open(md, "w", encoding="utf-8") as f:
+        f.write(
+            "## 日常（权重 5）\n- 甲\n- 乙\n"
+            "## 心声（权重 2，心声）\n- 内心\n"
+            "## 多行（权重 1，多行）\n- 一\n- 二\n"
+            "## 点击触发\n- 点我\n- 再点我\n"
+            "## 拖拽后随机\n- 拖我\n"
+            "## 内置动态（跳过）\n- 不会被读取\n"
+        )
+    g, d, c = load_line_groups(md)
+    assert len(g) == 3, g
+    assert g[0][1] == "A" and g[1][1] == "inner" and g[2][2] is True, g
+    assert c == ["点我", "再点我"], c
+    assert d == ["拖我"], d
+print("  ok: 台词表解析器（含点击触发/拖拽/心声/多行/跳过）")
+
 from menu import build_menu, create_tray
 from widget import WhaleWindow
 
@@ -76,6 +98,27 @@ def finish():
     # 三连句组应为多行整组气泡
     multi = [g for g in win._line_groups if g[2]]
     check("三连句多行组", len(multi) == 1 and len(multi[0][3]) == 3)
+
+    # 8b. 点击循环状态机（走真实 mouseReleaseEvent 路径）
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    # 无点击台词：关闭 → 余额 → 随机 → 关闭
+    win._click_lines = []
+    win.hide_bubble()
+    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
+    check("无点击台词: 点击→余额", win.bubble_visible and not win.bubble_random)
+    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
+    check("无点击台词: 余额→随机", win.bubble_visible and win.bubble_random)
+    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
+    check("无点击台词: 随机→关闭", not win.bubble_visible)
+    # 有点击台词：关闭 → 点击台词 → 余额 → 关闭
+    win._click_lines = ["测试点击台词"]
+    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
+    check("有点击台词: 点击→台词", win.bubble_visible and win.bubble_random and win.bubble_lines[0][0] == "测试点击台词")
+    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
+    check("有点击台词: 台词→余额", win.bubble_visible and not win.bubble_random)
+    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
+    check("有点击台词: 余额→关闭", not win.bubble_visible)
 
     # 9. 大小/音效/音量切换
     win.set_size(1.3)
