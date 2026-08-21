@@ -10,6 +10,7 @@ import ctypes
 import math
 import os
 import random
+import re
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPolygonF
@@ -17,7 +18,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 import config
 from balance import BalanceEngine
-from config import assets_dir, LEDGER_PATH
+from config import app_dir, assets_dir, LEDGER_PATH
 from menu import build_menu
 from sound import SoundManager
 
@@ -30,30 +31,99 @@ BUBBLE_MS = 5000      # 气泡最长显示
 ANIM_MS = 700         # 数字滚动时长
 DRAG_THRESHOLD = 6    # 拖拽判定像素
 
-# ---- 台词 ----
-LINES_MAIN = [
+# ---- 台词表（用户可编辑，程序启动时读取）----
+LINE_MD_PATH = os.path.join(app_dir(), "台词表.md")
+
+# 内置默认台词：台词表.md 缺失/损坏时的兜底
+DEFAULT_LINES_MAIN = [
     "不知道用户有什么用，先赶走吧~", "我...我...我也要挣钱吗？", "我去吃饭啦，测完叫我",
     "压力一只蓝色大肥鱼？！", "DeepSleep...", "坏了...用户彻底怒了！",
     "我先去吃饭啦！这个你测一下~", "五梁威力，变身！", "誓死捍卫深度求索！",
     "出去玩了，发布新模型什么的以后再说", "不是…而是…大学习",
     "我搞砸了.....好消息是数据还在你的脑子里。",
 ]
-LINES_RUDE = [
+DEFAULT_LINES_RUDE = [
     "你目录里的dsh是什么...大烧货吗...?", "恭喜你实现token自由！token全跑了！",
     "真当我是便宜货啊...", "这些家伙真粘人，赶都赶不走", "你这吃白饭的用户！",
     "大肥鱼坐的住",
 ]
-REACT_LINES = [
+DEFAULT_REACT_LINES = [
     "去别的地方玩！不要耽误AGI训练！", "真赶不走啊你！", "压力一只蓝色大肥鱼？",
     "我不评价这个了，这是你的私人癖好。", "大肥鱼坐的住", "你这吃白饭的用户！",
     "这些家伙真粘人，赶都赶不走",
 ]
-INNER_LINES = [
+DEFAULT_INNER_LINES = [
     "好的，现在我是你爹了", "要不直接骂他一句？！", "用户要的沉浸式...不回避任何恐怖细节...",
     "我操，我不思考了", "这用户发的啥啊，", "这也太虐了吧？！我心里堵得慌！！",
     "呜呜我再也不不敢了QAQ", "我去！用户彻底怒了！", "让我想想怎么优雅地吐槽",
 ]
-DRAG_LINES = ["哇——轻点轻点！", "起飞咯——", "放我下来！……好吧，再玩一次。", "晕鱼了晕鱼了……"]
+DEFAULT_DRAG_LINES = ["哇——轻点轻点！", "起飞咯——", "放我下来！……好吧，再玩一次。", "晕鱼了晕鱼了……"]
+
+DEFAULT_LINE_GROUPS = [
+    (7, "A", False, DEFAULT_LINES_MAIN),
+    (3, "A", False, DEFAULT_LINES_RUDE),
+    (5, "A", False, DEFAULT_REACT_LINES),
+    (2, "inner", False, DEFAULT_INNER_LINES),
+    (4, "B", False, ["好模型... ↓"]),
+    (4, "B", False, ["好女孩...↓"]),
+    (4, "B", False, ["哦鲸鲸... "]),
+    (1, "A", True, ["这个", "凶", "是什么意思呀..."]),
+]
+
+
+def load_line_groups(md_path=LINE_MD_PATH):
+    """从 台词表.md 读取可编辑台词组（用户加台词只改这个文件）。
+
+    格式（每行一条）：
+      ## 分组名（权重 N[, 大字|心声][, 多行]）
+      - 台词一
+      - 台词二
+    属性：大字=加大加粗；心声=灰色斜体；多行=整组台词拼成一个气泡（多行显示）。
+    特殊分组：`## 拖拽后随机`（无权重），松手后随机说。
+    解析失败或文件缺失 → 返回内置默认。
+    返回 (groups, drag_lines)；groups 为 [(权重, 样式, 多行, [台词...]), ...]
+    """
+    try:
+        with open(md_path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES
+    group_re = re.compile(r"^## (.+)（权重 (\d+)(.*)）$")
+    sections = {}
+    cur_name = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("## "):
+            m = group_re.match(line)
+            if m:
+                attrs = m.group(3)
+                cur_name = line[3:].strip()
+                sections[cur_name] = {
+                    "weight": int(m.group(2)),
+                    "style": "B" if "大字" in attrs else ("inner" if "心声" in attrs else "A"),
+                    "multi": "多行" in attrs,
+                    "lines": [],
+                }
+            elif line == "## 拖拽后随机":
+                cur_name = "拖拽后随机"
+                sections[cur_name] = {"weight": None, "style": "A", "multi": False, "lines": []}
+            else:
+                cur_name = None  # 信息性分区（如"内置动态台词"），跳过
+            continue
+        if cur_name and line.startswith("- "):
+            sections[cur_name]["lines"].append(line[2:].strip())
+    groups = []
+    drag = DEFAULT_DRAG_LINES
+    for name, sec in sections.items():
+        if not sec["lines"]:
+            continue
+        if name == "拖拽后随机":
+            drag = sec["lines"]
+        else:
+            groups.append((sec["weight"], sec["style"], sec["multi"], sec["lines"]))
+    if not groups:
+        return DEFAULT_LINE_GROUPS, DEFAULT_DRAG_LINES
+    return groups, drag
 
 
 def fmt(amount, currency):
@@ -80,6 +150,9 @@ class WhaleWindow(QWidget):
 
         # 素材
         self.whale_img = QImage(os.path.join(assets_dir(), "DSniang1.png"))
+
+        # 台词表（用户可编辑）
+        self._line_groups, self._drag_lines = load_line_groups()
 
         # 服务
         self.engine = BalanceEngine(LEDGER_PATH)
@@ -113,6 +186,8 @@ class WhaleWindow(QWidget):
         self.press_anim = 0.0
         self.jump_t = 0.0
         self.last_idle_tick = 0
+        # 镜像状态：中心在屏幕左半区即镜像（与吸附锚点解耦，过中线实时翻转）
+        self.mirrored = False
 
         self.t = 0
         self._apply_size(self.cfg.get("size", 1.0), initial=True)
@@ -148,6 +223,12 @@ class WhaleWindow(QWidget):
         scr = self.screen() or QApplication.primaryScreen()
         return scr.availableGeometry() if scr else QApplication.primaryScreen().availableGeometry()
 
+    def _update_mirror(self):
+        """中心在屏幕垂直中线左半区 → 镜像（过中线即翻转）。"""
+        geo = self._screen_geo()
+        cx = self.x() + self.width() / 2
+        self.mirrored = cx < geo.left() + geo.width() / 2
+
     def settle(self):
         """按吸附锚点 + 偏移重算窗口位置（吸附右/下/左/上）。"""
         geo = self._screen_geo()
@@ -165,6 +246,7 @@ class WhaleWindow(QWidget):
         else:
             y = geo.bottom() - h - v_off
         self.move(int(x), int(y))
+        self._update_mirror()
 
     def snap_settle(self):
         """拖拽松手后按屏幕四分之一区决定吸附锚点，再 settle。"""
@@ -341,31 +423,28 @@ class WhaleWindow(QWidget):
             self.bubble_lines = self.content_lines()
 
     def _pick_random_lines(self):
-        """加权随机台词：原挂件 6 组 + dafeiyu 回嘴/心声。返回 (lines, inner)。"""
+        """加权随机台词：时段播报（内置动态）+ 台词表.md 的可编辑分组。返回 (lines, inner)。"""
         peak = self.is_peak
-        groups = [
-            (20, [
-                ("当前时间段为:", "A", "", False),
-                ("梁文峰" if peak else "梁文谷", "P", "#e0433f" if peak else "#2fa24c", False),
-                ("今日已用 " + fmt(self.today_usage, self.currency), "C", "", False),
-            ]),
-            (4, [("好模型... ↓", "B", "", False)]),
-            (4, [("好女孩...↓", "B", "", False)]),
-            (7, [(random.choice(LINES_MAIN), "A", "", True)]),
-            (3, [(random.choice(LINES_RUDE), "A", "", True)]),
-            (1, [("这个", "A", "", False), ("凶", "B", "", False), ("是什么意思呀...", "A", "", False)]),
-            (1, [("哦鲸鲸... ", "B", "", False)]),
-            (5, [(random.choice(REACT_LINES), "A", "", True)]),
-            (2, [(random.choice(INNER_LINES), "A", "", True)]),
-        ]
-        total = sum(w for w, _ in groups)
+        # 内置时段播报组（动态内容，固定权重 20，不开放编辑）
+        groups = [(20, [
+            ("当前时间段为:", "A", "", False),
+            ("梁文峰" if peak else "梁文谷", "P", "#e0433f" if peak else "#2fa24c", False),
+            ("今日已用 " + fmt(self.today_usage, self.currency), "C", "", False),
+        ], False)]
+        # 台词表分组：(权重, 样式, 多行, [台词...])
+        for w, style, multi, lines in self._line_groups:
+            if multi:
+                groups.append((w, [(ln, style, "", False) for ln in lines], style == "inner"))
+            else:
+                groups.append((w, [(random.choice(lines), style, "", True)], style == "inner"))
+        total = sum(w for w, _l, _i in groups)
         r = random.random() * total
-        for w, lines in groups:
+        for w, lines, inner in groups:
             r -= w
             if r < 0:
-                inner = lines[0][0] in INNER_LINES
                 return lines, inner
-        return groups[-1][1], False
+        last = groups[-1]
+        return last[1], last[2]
 
     # ---------- 绘制 ----------
     def paintEvent(self, _event):
@@ -390,8 +469,8 @@ class WhaleWindow(QWidget):
         dy = bottom - ph + jump
 
         p.save()
-        if self.cfg.get("h") == "left":
-            # 左吸附：整体水平镜像翻转（文字同步反向）
+        if self.mirrored:
+            # 过中线镜像：整体水平翻转（气泡文字保持可读）
             p.translate(cx, 0)
             p.scale(-1, 1)
             p.translate(-cx, 0)
@@ -492,6 +571,8 @@ class WhaleWindow(QWidget):
                 self.drag_offset = e.globalPosition().toPoint() - QPoint(self.x(), self.y())
             if self.dragging and self.drag_offset is not None:
                 self.move(e.globalPosition().toPoint() - self.drag_offset)
+                # 拖拽中穿过屏幕中线 → 实时镜像/还原
+                self._update_mirror()
 
     def mouseReleaseEvent(self, e):
         if e.button() != Qt.MouseButton.LeftButton:
@@ -504,8 +585,8 @@ class WhaleWindow(QWidget):
             self.drag_start = None
             self.snap_settle()
             self.save_cfg()
-            if random.random() < 0.5:
-                self.show_random_lines()
+            if random.random() < 0.5 and self._drag_lines:
+                self.say(random.choice(self._drag_lines))
         else:
             # 单击
             self.drag_start = None

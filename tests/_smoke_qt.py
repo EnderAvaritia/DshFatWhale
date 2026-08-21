@@ -68,9 +68,14 @@ def finish():
     win.cfg["ds_api_key"] = "sk-fake-test-key"
     win.refresh(True)
 
-    # 8. 随机台词可挑选
+    # 8. 随机台词可挑选 + 台词表加载
     lines, inner = win._pick_random_lines()
     check("随机台词非空", len(lines) >= 1 and lines[0][0])
+    check("台词表加载 8 组", len(win._line_groups) == 8)
+    check("拖拽台词 4 条", len(win._drag_lines) == 4)
+    # 三连句组应为多行整组气泡
+    multi = [g for g in win._line_groups if g[2]]
+    check("三连句多行组", len(multi) == 1 and len(multi[0][3]) == 3)
 
     # 9. 大小/音效/音量切换
     win.set_size(1.3)
@@ -78,11 +83,20 @@ def finish():
     win.set_volume(0.5)
     check("size/sound/vol 状态更新", win.cfg["size"] == 1.3 and win.cfg["sound_set"] == "fx1" and abs(win.cfg["vol"] - 0.5) < 0.01)
 
-    # 10. 记账文件已生成（config.json 落盘）
+    # 10. 中线镜像逻辑
+    geo = win.screen().availableGeometry()
+    win.move(geo.left() + 1, geo.top() + 1)
+    win._update_mirror()
+    check("左半区镜像", win.mirrored)
+    win.move(geo.right() - win.width() - 1, geo.top() + 1)
+    win._update_mirror()
+    check("右半区不镜像", not win.mirrored)
+
+    # 11. 记账文件已生成（config.json 落盘）
     from config import CONFIG_PATH, LEDGER_PATH
     check("config.json 已生成", os.path.exists(CONFIG_PATH))
 
-    # 11. 退出保存
+    # 12. 退出保存
     win.quit_app()
 
     print()

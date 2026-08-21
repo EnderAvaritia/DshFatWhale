@@ -1,8 +1,7 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 if exist ".venv\Scripts\pythonw.exe" (
-    start "" ".venv\Scripts\pythonw.exe" "È≤∏È±º.py"
+    start "" ".venv\Scripts\pythonw.exe" "æ®”„.py"
 ) else (
-    start "" pythonw "È≤∏È±º.py"
+    start "" pythonw "æ®”„.py"
 )
