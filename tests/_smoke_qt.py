@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory() as td:
     md = os.path.join(td, "t.md")
     with open(md, "w", encoding="utf-8") as f:
         f.write(
+            "## 我的台词（权重 100）\n- 我的梗\n"
             "## 日常（权重 5）\n- 甲\n- 乙\n"
             "## 心声（权重 2，心声）\n- 内心\n"
             "## 多行（权重 1，多行）\n- 一\n- 二\n"
@@ -34,8 +35,9 @@ with tempfile.TemporaryDirectory() as td:
             "## 内置动态（跳过）\n- 不会被读取\n"
         )
     g, d, c = load_line_groups(md)
-    assert len(g) == 3, g
-    assert g[0][1] == "A" and g[1][1] == "inner" and g[2][2] is True, g
+    assert len(g) == 4, g
+    assert g[0] == (100, "A", False, ["我的梗"]), "我的台词组应为最高权重 100 且在首位"
+    assert g[2][1] == "inner" and g[3][2] is True, g
     assert c == ["点我", "再点我"], c
     assert d == ["拖我"], d
 print("  ok: 台词表解析器（含点击触发/拖拽/心声/多行/跳过）")
@@ -103,7 +105,7 @@ def finish():
     md_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "台词表.md")
     with open(md_path, encoding="utf-8") as f:
         md_text = f.read()
-    check("台词表.md 为可解析格式", "（权重" in md_text and "## 点击触发" in md_text)
+    check("台词表.md 为可解析格式", "（权重" in md_text and "## 点击触发" in md_text and "## 我的台词（权重 100）" in md_text)
 
     # 8b. 点击 = 台词表循环 + 常驻余额气泡
     from PySide6.QtCore import Qt
