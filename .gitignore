@@ -18,3 +18,8 @@ dist/
 .idea/
 .vscode/
 *.swp
+
+# ¹¤¾ßÄ¿Â¼
+.codegraph/
+.omo/
+
