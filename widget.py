@@ -346,7 +346,7 @@ class WhaleWindow(QWidget):
         groups = [
             (20, [
                 ("当前时间段为:", "A", "", False),
-                ("高峰时段" if peak else "空闲时段", "P", "#e0433f" if peak else "#2fa24c", False),
+                ("梁文峰" if peak else "梁文谷", "P", "#e0433f" if peak else "#2fa24c", False),
                 ("今日已用 " + fmt(self.today_usage, self.currency), "C", "", False),
             ]),
             (7, [("好模型... ↓", "B", "", False), ("好女孩...↓", "B", "", False)]),
