@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""鲸鱼.py —— DeepSeek 余额鲸鱼桌宠入口。
+"""鲸鱼.py —— DshFatWhale：DeepSeek 余额鲸鱼桌宠入口。
 
 独立运行（不依赖 DSH/浏览器）：透明置顶桌宠，显示 DeepSeek 余额与今日已用。
 运行：双击 启动鲸鱼.bat，或 .venv\\Scripts\\pythonw.exe 鲸鱼.py

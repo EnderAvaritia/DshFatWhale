@@ -1,4 +1,4 @@
-# DeepSeek 余额鲸鱼桌宠 🐋
+# DshFatWhale 🐋 — DeepSeek 余额鲸鱼桌宠
 
 DeepSeek-Balance-Whale-Widget（DSH 小鲸鱼余额挂件）的**独立运行桌面版**：不依赖 DSH、不依赖浏览器，一只透明置顶的小鲸鱼趴在屏幕角落，帮你盯着 DeepSeek 账户余额。
 
@@ -92,7 +92,7 @@ tests/             balance 逻辑单测 + Qt 冒烟测试
 .\.venv\Scripts\pyinstaller 鲸鱼.spec
 ```
 
-产物在 `dist/DeepSeekWhale.exe`，双击即用（杀毒软件可能对 PyInstaller 产物误报，加信任即可）。exe 与 `config.json`、账本文件同级存放，整个文件夹可拷走。
+产物在 `dist/DshFatWhale.exe`，双击即用（杀毒软件可能对 PyInstaller 产物误报，加信任即可）。exe 与 `config.json`、账本文件同级存放，整个文件夹可拷走。
 
 ## 验证
 

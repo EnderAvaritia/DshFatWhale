@@ -150,7 +150,7 @@ class WhaleWindow(QWidget):
             flags |= Qt.WindowType.WindowStaysOnTopHint
         super().__init__(None, flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowTitle("DeepSeek 余额鲸鱼")
+        self.setWindowTitle("DshFatWhale · DeepSeek 余额鲸鱼")
 
         # 素材
         self.whale_img = QImage(os.path.join(assets_dir(), "DSniang1.png"))

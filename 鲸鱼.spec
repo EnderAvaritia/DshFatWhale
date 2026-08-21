@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller 打包配置：pyinstaller 鲸鱼.spec
-# 产物：dist/DeepSeekWhale.exe（双击即用，无需 Python）
+# 产物：dist/DshFatWhale.exe（双击即用，无需 Python）
 
 a = Analysis(
     ['鲸鱼.py'],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='DeepSeekWhale',
+    name='DshFatWhale',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
