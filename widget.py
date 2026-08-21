@@ -11,7 +11,7 @@ import math
 import os
 import random
 
-from PySide6.QtCore import QPoint, QRectF, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPolygonF
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -264,14 +264,16 @@ class WhaleWindow(QWidget):
         if p.get("ok"):
             nb = float(p["totalBalance"])
             nc = str(p.get("currency") or "CNY")
-            changed = self.balance is not None and (nb != self.balance or nc != self.currency)
+            first = self.balance is None
+            changed = not first and (nb != self.balance or nc != self.currency)
             self.balance = nb
             self.currency = nc
             self.message = ""
             self.today_usage = p.get("todayUsage")
             self.is_peak = bool(p.get("isPeak"))
             self.status = "ok"
-            if changed:
+            if changed or first:
+                # 余额变化或首次观测：滚动数字 + 弹出气泡
                 self.start_roll(nb, nc)
                 if not self.bubble_random:
                     self.show_bubble()
@@ -284,8 +286,12 @@ class WhaleWindow(QWidget):
         self.update()
 
     def start_roll(self, to, currency):
-        frm = self.shown if self.shown is not None else to
-        self.anim = {"f": frm, "t": to, "c": currency, "t0": self.t * TICK}
+        if self.shown is None:
+            # 首次显示：直接展示，不做滚动
+            self.shown = to
+            self.anim = None
+            return
+        self.anim = {"f": self.shown, "t": to, "c": currency, "t0": self.t * TICK}
 
     # ---------- 气泡 ----------
     def content_lines(self):
