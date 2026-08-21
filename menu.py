@@ -84,6 +84,11 @@ def build_menu(widget) -> QMenu:
 
     m.addAction(_VolumeAction(m, widget))
 
+    pb = m.addAction("余额气泡（常驻）")
+    pb.setCheckable(True)
+    pb.setChecked(bool(widget.cfg.get("persistent_bubble", True)))
+    pb.triggered.connect(lambda on: widget.set_persistent(on))
+
     size_menu = m.addMenu("大小")
     for label, mult in SIZE_LEVELS:
         a = size_menu.addAction(label)

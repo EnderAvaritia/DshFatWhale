@@ -158,6 +158,9 @@ class WhaleWindow(QWidget):
         # 台词表（用户可编辑）
         self._line_groups, self._drag_lines, self._click_lines = load_line_groups()
 
+        # 常驻余额气泡开关（余额+峰谷常驻显示；点击鲸鱼时临时切台词，说完自动回落）
+        self.persistent = bool(self.cfg.get("persistent_bubble", True))
+
         # 服务
         self.engine = BalanceEngine(LEDGER_PATH)
         self.sound = SoundManager(assets_dir())
@@ -208,6 +211,8 @@ class WhaleWindow(QWidget):
         self.settle()
         if self.cfg.get("passthrough", False):
             self.set_passthrough(True)
+        if self.persistent:
+            self.show_bubble()
         self.refresh(False)
 
     # ---------- 尺寸与布局 ----------
@@ -333,12 +338,12 @@ class WhaleWindow(QWidget):
         if self.jump_t > 0:
             self.jump_t = max(0.0, self.jump_t - 0.06)
 
-        # 气泡自动收起
-        if self.bubble_visible and now_ms > self.bubble_until:
-            self.hide_bubble()
+        # 气泡自动收起：台词气泡到时后回落常驻余额（或隐藏）
+        if self.bubble_visible and self.bubble_random and now_ms > self.bubble_until:
+            self._return_to_persistent()
 
-        # 空闲随机台词（低概率、有冷却）
-        if (not self.bubble_visible and not self.dragging
+        # 空闲随机台词（低概率、有冷却；常驻气泡开启时不打扰）
+        if (not self.persistent and not self.bubble_visible and not self.dragging
                 and self.t - self.last_idle_tick > 4500 and random.random() < 0.0006):
             self.last_idle_tick = self.t
             inner = random.random() < 0.2
@@ -359,9 +364,9 @@ class WhaleWindow(QWidget):
             self.is_peak = bool(p.get("isPeak"))
             self.status = "ok"
             if changed or first:
-                # 余额变化或首次观测：滚动数字 + 弹出气泡
+                # 余额变化或首次观测：滚动数字 + 常驻气泡更新
                 self.start_roll(nb, nc)
-                if not self.bubble_random:
+                if self.persistent and not self.bubble_random:
                     self.show_bubble()
             elif not self.anim:
                 self.shown = nb
@@ -381,6 +386,7 @@ class WhaleWindow(QWidget):
 
     # ---------- 气泡 ----------
     def content_lines(self):
+        """常驻余额气泡内容：余额 + 今日已用 + 峰谷时段。"""
         if self.status == "error":
             return [
                 ("DeepSeek 余额", "A", "", False),
@@ -394,13 +400,17 @@ class WhaleWindow(QWidget):
                 ("加载中…", "C", "", False),
             ]
         usage = self.today_usage if self.today_usage is not None else None
+        peak_line = ("当前时段：梁文峰", "C", "#e0433f", False) if self.is_peak \
+            else ("当前时段：梁文谷", "C", "#2fa24c", False)
         return [
             ("DeepSeek 余额", "A", "", False),
             (fmt(self.shown if self.shown is not None else self.balance, self.currency), "B", "", False),
             ("今日已用 " + fmt(usage, self.currency), "C", "", False),
+            peak_line,
         ]
 
     def show_bubble(self):
+        """显示常驻余额气泡。"""
         self.bubble_visible = True
         self.bubble_random = False
         self.bubble_inner = False
@@ -412,6 +422,23 @@ class WhaleWindow(QWidget):
         self.bubble_visible = False
         self.bubble_random = False
         self.bubble_lines = None
+        self.update()
+
+    def _return_to_persistent(self):
+        """台词气泡到时：常驻开启则回落余额气泡，否则隐藏。"""
+        if self.persistent:
+            self.show_bubble()
+        else:
+            self.hide_bubble()
+
+    def show_click_line(self):
+        """点击鲸鱼：说一句台词表的词（台词表循环）。"""
+        lines, inner = self._pick_random_lines()
+        self.bubble_visible = True
+        self.bubble_random = True
+        self.bubble_inner = inner
+        self.bubble_lines = lines
+        self.bubble_until = self.t * TICK + BUBBLE_MS
         self.update()
 
     def show_random_lines(self, force_inner=False):
@@ -427,21 +454,20 @@ class WhaleWindow(QWidget):
             self.bubble_lines = self.content_lines()
 
     def _pick_random_lines(self):
-        """加权随机台词：时段播报（内置动态）+ 台词表.md 的可编辑分组。返回 (lines, inner)。"""
-        peak = self.is_peak
-        # 内置时段播报组（动态内容，固定权重 20，不开放编辑）
-        groups = [(20, [
-            ("当前时间段为:", "A", "", False),
-            ("梁文峰" if peak else "梁文谷", "P", "#e0433f" if peak else "#2fa24c", False),
-            ("今日已用 " + fmt(self.today_usage, self.currency), "C", "", False),
-        ], False)]
+        """加权随机台词：台词表.md 的可编辑分组 + 点击触发池。返回 (lines, inner)。"""
         # 台词表分组：(权重, 样式, 多行, [台词...])
+        groups = []
         for w, style, multi, lines in self._line_groups:
             if multi:
                 groups.append((w, [(ln, style, "", False) for ln in lines], style == "inner"))
             else:
                 groups.append((w, [(random.choice(lines), style, "", True)], style == "inner"))
+        # 点击触发池：默认权重 5，参与随机
+        if self._click_lines:
+            groups.append((5, [(random.choice(self._click_lines), "A", "", True)], False))
         total = sum(w for w, _l, _i in groups)
+        if total <= 0:
+            return [("（台词表为空，右键检查台词表.md）", "A", "", True)], False
         r = random.random() * total
         for w, lines, inner in groups:
             r -= w
@@ -592,39 +618,26 @@ class WhaleWindow(QWidget):
             if random.random() < 0.5 and self._drag_lines:
                 self.say(random.choice(self._drag_lines))
         else:
-            # 单击（气泡内/外行为一致）：
-            #   定义了点击触发台词 → 关闭 → 点击台词 → 余额 → 关闭
-            #   未定义            → 关闭 → 余额 → 随机台词 → 关闭
+            # 单击 = 台词表循环：随机说一句台词表的词，说完自动回落常驻余额气泡
             self.drag_start = None
-            if self.bubble_visible:
-                if self.bubble_random:
-                    # 当前是台词（点击触发/随机）→ 切到余额；无点击台词时直接关闭
-                    if self._click_lines:
-                        self.show_bubble()
-                        self.refresh(True)
-                    else:
-                        self.hide_bubble()
-                else:
-                    # 当前是余额 → 有关键台词则关闭，否则切随机台词
-                    if self._click_lines:
-                        self.hide_bubble()
-                    else:
-                        self.show_random_lines()
-            else:
-                # 气泡关闭时点击：优先说"点击触发"组的话，否则显示余额
-                if self._click_lines:
-                    self.say(random.choice(self._click_lines))
-                    self.refresh(True)
-                else:
-                    self.show_bubble()
-                    self.refresh(True)
-                self.jump_t = 1.0
+            self.show_click_line()
+            self.refresh(True)
+            self.jump_t = 1.0
         self.update()
 
     def contextMenuEvent(self, e):
         build_menu(self).exec(e.globalPos())
 
     # ---------- 菜单回调 ----------
+    def set_persistent(self, on):
+        self.cfg["persistent_bubble"] = bool(on)
+        self.persistent = bool(on)
+        self.save_cfg()
+        if on:
+            self.show_bubble()
+        elif self.bubble_visible and not self.bubble_random:
+            self.hide_bubble()
+
     def set_usage_mode(self, mode):
         self.cfg["usage_mode"] = "token" if mode == "token" else "ledger"
         self.save_cfg()

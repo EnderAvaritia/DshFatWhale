@@ -104,26 +104,24 @@ def finish():
         md_text = f.read()
     check("台词表.md 为可解析格式", "（权重" in md_text and "## 点击触发" in md_text)
 
-    # 8b. 点击循环状态机（走真实 mouseReleaseEvent 路径）
+    # 8b. 点击 = 台词表循环 + 常驻余额气泡
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
-    # 无点击台词：关闭 → 余额 → 随机 → 关闭
-    win._click_lines = []
-    win.hide_bubble()
+    win.set_persistent(True)
+    check("常驻开启: 余额气泡显示", win.bubble_visible and not win.bubble_random)
     QTest.mouseClick(win, Qt.MouseButton.LeftButton)
-    check("无点击台词: 点击→余额", win.bubble_visible and not win.bubble_random)
+    check("点击→台词", win.bubble_visible and win.bubble_random)
     QTest.mouseClick(win, Qt.MouseButton.LeftButton)
-    check("无点击台词: 余额→随机", win.bubble_visible and win.bubble_random)
+    check("再点→另一句台词", win.bubble_random)
+    win._return_to_persistent()
+    check("台词回落常驻余额", win.bubble_visible and not win.bubble_random)
+    win.set_persistent(False)
+    check("常驻关闭: 气泡隐藏", not win.bubble_visible)
     QTest.mouseClick(win, Qt.MouseButton.LeftButton)
-    check("无点击台词: 随机→关闭", not win.bubble_visible)
-    # 有点击台词：关闭 → 点击台词 → 余额 → 关闭
-    win._click_lines = ["测试点击台词"]
-    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
-    check("有点击台词: 点击→台词", win.bubble_visible and win.bubble_random and win.bubble_lines[0][0] == "测试点击台词")
-    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
-    check("有点击台词: 台词→余额", win.bubble_visible and not win.bubble_random)
-    QTest.mouseClick(win, Qt.MouseButton.LeftButton)
-    check("有点击台词: 余额→关闭", not win.bubble_visible)
+    check("常驻关闭: 点击→台词", win.bubble_visible and win.bubble_random)
+    win._return_to_persistent()
+    check("常驻关闭: 回落后隐藏", not win.bubble_visible)
+    win.set_persistent(True)
 
     # 9. 大小/音效/音量切换
     win.set_size(1.3)

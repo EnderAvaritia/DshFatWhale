@@ -33,6 +33,8 @@ LEDGER_PATH = os.path.join(app_dir(), ".dshw-usage.json")
 DEFAULTS = {
     # 用量模式：ledger（小鲸鱼记账，默认）/ token（实时·令牌）
     "usage_mode": "ledger",
+    # 常驻余额气泡（余额+今日已用+峰谷时段），右键菜单可关
+    "persistent_bubble": True,
     # 显示大小档位
     "size": 1.0,
     # 音效
