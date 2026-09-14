@@ -6,7 +6,7 @@ a = Analysis(
     ['鲸鱼.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets')],
+    datas=[('assets', 'assets'), ('台词表.md', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

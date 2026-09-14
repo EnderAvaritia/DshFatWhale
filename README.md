@@ -91,8 +91,9 @@ balance.py         数据层：余额拉取、记账模式、令牌模式（峰�
 sound.py           QSoundEffect 音效：两套音效组、音量
 menu.py            右键菜单 + 系统托盘 + 开机自启
 config.py          config.json 读写、路径解析、Key 解析（环境变量优先）
+log.py             统一日志（logs/whale.log，1MB × 3 轮转）
 config.example.json  配置模板（复制成 config.json 改值即可）
-assets/            鲸鱼图 DSniang1.png、音效 Ya1/Ya2/D1/D2.mp3、托盘图标 icon.ico
+assets/            鲸鱼图 DSniang1.png、音效 Ya1/Ya2/D1/D2（.wav 首选 + .mp3 兜底）、托盘图标 icon.ico
 台词表.md          台词数据（用户可编辑：加一行 `- 台词` 即可新增）
 启动鲸鱼.bat       启动脚本（自动选 .venv 或系统 pythonw）
 鲸鱼.spec          PyInstaller 打包配置
@@ -116,7 +117,7 @@ tests/             balance 逻辑单测 + Qt 冒烟测试
 .\.venv\Scripts\pyinstaller 鲸鱼.spec
 ```
 
-产物在 `dist/DshFatWhale.exe`，双击即用（杀毒软件可能对 PyInstaller 产物误报，加信任即可）。exe 与 `config.json`、账本文件同级存放，整个文件夹可拷走。
+产物在 `dist/DshFatWhale.exe`，双击即用（杀毒软件可能对 PyInstaller 产物误报，加信任即可）。exe 与 `config.json`、账本文件同级存放，整个文件夹可拷走；**首次运行会在 exe 同级自动释放一份 `台词表.md`**，直接编辑它即可改台词（内置副本随包分发，缺失时回落到内置默认台词）。排障看同级的 `logs/whale.log`。
 
 ## 验证
 
@@ -127,9 +128,10 @@ tests/             balance 逻辑单测 + Qt 冒烟测试
 
 ## 常见问题
 
-- **显示"未配置 DEEPSEEK_API_KEY"**：见上方 Key 配置。
+- **显示"未配置 DEEPSEEK_API_KEY"**：见上方 Key 配置。气泡会直接给出操作指引（右键菜单 → 设置 DeepSeek Key…）。
 - **今日已用显示 --**：记账模式需先跑一次余额观测（60 秒内自动完成）；令牌模式需配置平台令牌。
-- **没有声音**：确认 `assets/*.mp3` 存在；缺失时静默降级。
+- **没有声音**：音效资产需为 WAV（`assets/*.wav`，QSoundEffect 只支持未压缩音频）；若只有 mp3，程序会自动回落到 QMediaPlayer 后端。右键菜单 → 音效 → 「开启音效」可开关。
+- **出错了怎么办**：所有异常都会写到 `logs/whale.log`（1MB × 3 轮转）。源码运行与打包 exe 都没有控制台，排障请先看这个文件。
 - **改代码不生效**：重启程序即可（无缓存问题）。
 
 ## 致谢

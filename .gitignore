@@ -9,6 +9,9 @@ venv/
 config.json
 .dshw-usage.json
 
+# 运行日志
+logs/
+
 # PyInstaller
 build/
 dist/
@@ -19,7 +22,11 @@ dist/
 .vscode/
 *.swp
 
-# ����Ŀ¼
+# 工具目录
 .codegraph/
 .omo/
 
+# Audit artifacts (session-local, not part of the project)
+_audit/
+full-analysis-*.md
+generalization-plan-*.md
