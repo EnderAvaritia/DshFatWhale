@@ -6,6 +6,7 @@ Key 读取通道：环境变量 DEEPSEEK_API_KEY 优先，其次 config.json。
 """
 import json
 import os
+import shutil
 import sys
 
 
@@ -29,6 +30,8 @@ def assets_dir() -> str:
 
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
 LEDGER_PATH = os.path.join(app_dir(), ".dshw-usage.json")
+LINES_PATH = os.path.join(app_dir(), "台词表.md")
+BUNDLED_LINES_PATH = os.path.join(bundle_dir(), "台词表.md")
 
 DEFAULTS = {
     # 用量模式：ledger（小鲸鱼记账，默认）/ token（实时·令牌）
@@ -76,12 +79,44 @@ def load_config() -> dict:
     return cfg
 
 
-def save_config(cfg: dict) -> None:
+def save_config(cfg: dict) -> bool:
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except OSError:
-        pass
+        return True
+    except OSError as err:
+        try:
+            from log import get_logger  # 延迟导入，避免循环引用
+
+            get_logger().warning("配置写入失败: %s (%s)", CONFIG_PATH, err)
+        except Exception:
+            pass
+        return False
+
+
+def lines_path() -> str:
+    """台词表路径。
+
+    优先用程序目录里的 台词表.md（用户可编辑、可分享）；
+    打包版（PyInstaller）程序目录里没有时，首次运行自动从内置副本释放一份，
+    否则 exe 用户改不了台词、且不会得到任何提示。
+    """
+    if os.path.exists(LINES_PATH):
+        return LINES_PATH
+    bundled = BUNDLED_LINES_PATH
+    if os.path.abspath(bundled) != os.path.abspath(LINES_PATH) and os.path.exists(bundled):
+        try:
+            shutil.copy2(bundled, LINES_PATH)
+            return LINES_PATH
+        except OSError as err:
+            try:
+                from log import get_logger  # 延迟导入，避免循环引用
+
+                get_logger().warning("台词表释放失败: %s (%s)", LINES_PATH, err)
+            except Exception:
+                pass
+            return bundled
+    return LINES_PATH  # 都不存在：调用方回落到内置默认台词
 
 
 def resolve_api_key(cfg: dict) -> str:

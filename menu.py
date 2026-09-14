@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from config import assets_dir
+from config import app_dir, assets_dir
 
 SIZE_LEVELS = (("小", 0.7), ("中", 1.0), ("大", 1.3), ("特大", 1.6))
 
@@ -76,6 +76,11 @@ def build_menu(widget) -> QMenu:
         a.triggered.connect(lambda _=False, k=key: widget.set_usage_mode(k))
 
     sound_menu = m.addMenu("音效")
+    sa = sound_menu.addAction("开启音效")
+    sa.setCheckable(True)
+    sa.setChecked(bool(widget.cfg.get("sound_on", True)))
+    sa.triggered.connect(lambda on: widget.set_sound_on(on))
+    sound_menu.addSeparator()
     for label, key in (("小黄鸭", "duck"), ("音效1", "fx1")):
         a = sound_menu.addAction(label)
         a.setCheckable(True)
@@ -172,10 +177,14 @@ def _on_tray_activated(reason, tray, widget):
         tray.setContextMenu(build_menu(widget))
 
 
+def _ps_quote(path: str) -> str:
+    """PowerShell 单引号字符串里的单引号需要写成两个。"""
+    return str(path).replace("'", "''")
+
+
 def set_autostart(widget, on: bool):
     """开机自启：Startup 目录快捷方式（同 dafeiyu-pet 实现）。"""
     widget.cfg["autostart"] = bool(on)
-    widget.save_cfg()
     lnk = os.path.join(
         os.environ["APPDATA"], "Microsoft", "Windows",
         "Start Menu", "Programs", "Startup", "大肥鱼鲸鱼.lnk",
@@ -194,16 +203,33 @@ def set_autostart(widget, on: bool):
             ps = (
                 "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');"
                 "$s.TargetPath='{}';$s.Arguments='{}';$s.WorkingDirectory='{}';$s.Save()"
-            ).format(lnk, target, args, app_dir())
+            ).format(_ps_quote(lnk), _ps_quote(target), _ps_quote(args), _ps_quote(app_dir()))
             subprocess.run(
                 ["powershell", "-NoProfile", "-Command", ps],
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 check=True,
             )
+            widget.cfg["autostart"] = True
+            widget.save_cfg()
             widget.say("已开机自启，明天见～")
         else:
             if os.path.exists(lnk):
                 os.remove(lnk)
+            widget.cfg["autostart"] = False
+            widget.save_cfg()
             widget.say("已取消开机自启")
     except Exception as ex:
-        QMessageBox.warning(widget, "开机自启", "设置失败：" + str(ex))
+        # 失败要落日志（用户看不到的异常一律进 logs/whale.log），并把开关状态回滚，
+        # 避免菜单勾选状态与真实情况不一致
+        try:
+            from log import get_logger
+
+            get_logger().exception("开机自启设置失败 on=%s", on)
+        except Exception:
+            pass
+        widget.cfg["autostart"] = False
+        widget.save_cfg()
+        QMessageBox.warning(
+            widget, "开机自启",
+            "设置失败：%s\n\n详细原因见程序目录 logs/whale.log" % ex,
+        )

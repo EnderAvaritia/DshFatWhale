@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 import config
 from balance import BalanceEngine
 from config import app_dir, assets_dir, LEDGER_PATH
+from log import get_logger
 from menu import build_menu
 from sound import SoundManager
 
@@ -32,7 +33,7 @@ ANIM_MS = 700         # 数字滚动时长
 DRAG_THRESHOLD = 6    # 拖拽判定像素
 
 # ---- 台词表（用户可编辑，程序启动时读取）----
-LINE_MD_PATH = os.path.join(app_dir(), "台词表.md")
+LINE_MD_PATH = config.LINES_PATH  # 兼容旧引用；实际读取走 config.lines_path()
 
 # 内置默认台词：台词表.md 缺失/损坏时的兜底
 DEFAULT_LINES_MAIN = [
@@ -163,9 +164,13 @@ class WhaleWindow(QWidget):
 
         # 素材
         self.whale_img = QImage(os.path.join(assets_dir(), "DSniang1.png"))
+        if self.whale_img.isNull():
+            get_logger().error("鲸鱼素材加载失败: %s", os.path.join(assets_dir(), "DSniang1.png"))
 
-        # 台词表（用户可编辑）
-        self._line_groups, self._drag_lines, self._click_lines, self._click_weight = load_line_groups()
+        # 台词表（用户可编辑；打包版首启会把内置副本释放到程序目录）
+        self._line_groups, self._drag_lines, self._click_lines, self._click_weight = load_line_groups(
+            config.lines_path()
+        )
 
         # 常驻余额气泡开关（余额+峰谷常驻显示；点击鲸鱼时临时切台词，说完自动回落）
         self.persistent = bool(self.cfg.get("persistent_bubble", True))
@@ -174,6 +179,7 @@ class WhaleWindow(QWidget):
         self.engine = BalanceEngine(LEDGER_PATH)
         self.sound = SoundManager(assets_dir())
         self.sound.apply_set(self.cfg.get("sound_set", "duck"))
+        self.sound.set_enabled(bool(self.cfg.get("sound_on", True)))
         self.sound.set_volume(self.cfg.get("vol", 0.9))
 
         # 数据状态
@@ -183,6 +189,8 @@ class WhaleWindow(QWidget):
         self.is_peak = False
         self.status = "loading"
         self.message = ""
+        self.error_code = ""
+        self.stale = False        # True = 网络抖动，显示的是最近一次余额
         self.shown = None          # 当前显示的数字（滚动动画中间值）
         self.anim = None           # {"f": from, "t": to, "c": currency, "t0": ms}
 
@@ -373,6 +381,8 @@ class WhaleWindow(QWidget):
             self.balance = nb
             self.currency = nc
             self.message = ""
+            self.error_code = ""
+            self.stale = bool(p.get("stale"))
             self.today_usage = p.get("todayUsage")
             self.is_peak = bool(p.get("isPeak"))
             self.status = "ok"
@@ -385,6 +395,8 @@ class WhaleWindow(QWidget):
                 self.shown = nb
         else:
             self.status = "error"
+            self.error_code = str(p.get("code") or "")
+            self.stale = False
             self.message = str(p.get("error") or "获取失败")
         self._refresh_bubble()
         self.update()
@@ -398,14 +410,40 @@ class WhaleWindow(QWidget):
         self.anim = {"f": self.shown, "t": to, "c": currency, "t0": self.t * TICK}
 
     # ---------- 气泡 ----------
+    def _error_lines(self):
+        """错误态气泡：把内部错误翻译成人话 + 给出可操作指引。
+
+        只保留最多 5 行（气泡区高度按 5 行设计），避免长文案被窗口裁掉；
+        技术细节统一进 logs/whale.log，不再塞进气泡。
+        """
+        msg = (self.message or "获取失败").strip()
+        code = str(self.error_code or "").upper()
+        head = [
+            ("DeepSeek 余额", "A", "", False),
+            (fmt(self.shown if self.shown is not None else self.balance, self.currency), "B", "", False),
+        ]
+        if code == "NO_KEY" or "DEEPSEEK_API_KEY" in msg:
+            tail = [
+                ("还没设置 API Key", "C", "#e0433f", False),
+                ("右键菜单 → 设置 DeepSeek Key…", "C", "", False),
+            ]
+        elif "401" in msg or "403" in msg:
+            tail = [
+                ("Key 无效或已失效", "C", "#e0433f", False),
+                ("右键菜单 → 重新设置 Key", "C", "", False),
+            ]
+        elif code == "INTERNAL":
+            tail = [("内部错误，已写入日志", "C", "#e0433f", False), ("详见 logs/whale.log", "C", "", False)]
+        elif code in ("PARSE", "SHAPE"):
+            tail = [("接口返回结构异常", "C", "#e0433f", False), ("详见 logs/whale.log", "C", "", False)]
+        else:
+            tail = [(msg, "C", "#e0433f", True), ("详见 logs/whale.log", "C", "", False)]
+        return (head + tail)[:5]
+
     def content_lines(self):
         """常驻余额气泡内容：余额 + 今日已用 + 峰谷时段。"""
         if self.status == "error":
-            return [
-                ("DeepSeek 余额", "A", "", False),
-                (fmt(self.shown if self.shown is not None else self.balance, self.currency), "B", "", False),
-                (self.message[:14], "C", "", False),
-            ]
+            return self._error_lines()
         if self.balance is None:
             return [
                 ("DeepSeek 余额", "A", "", False),
@@ -415,12 +453,16 @@ class WhaleWindow(QWidget):
         usage = self.today_usage if self.today_usage is not None else None
         peak_line = ("当前时段：梁文峰", "C", "#e0433f", False) if self.is_peak \
             else ("当前时段：梁文谷", "C", "#2fa24c", False)
-        return [
+        lines = [
             ("DeepSeek 余额", "A", "", False),
             (fmt(self.shown if self.shown is not None else self.balance, self.currency), "B", "", False),
             ("今日已用 " + fmt(usage, self.currency), "C", "", False),
             peak_line,
         ]
+        if self.stale:
+            # 网络抖动沿用最近余额时，明确告诉用户这不是实时值
+            lines.append(("（网络抖动，显示最近一次余额）", "C", "", True))
+        return lines
 
     def show_bubble(self):
         """显示常驻余额气泡。"""
@@ -662,10 +704,16 @@ class WhaleWindow(QWidget):
         self.cfg["sound_set"] = self.sound.sound_set
         self.save_cfg()
 
+    def set_sound_on(self, on):
+        """独立音效开关：与音量解耦（音量 0 与关闭音效是两件事）。"""
+        self.sound.set_enabled(on)
+        self.cfg["sound_on"] = bool(self.sound.sound_on)
+        self.save_cfg()
+
     def set_volume(self, v):
         self.sound.set_volume(v)
         self.cfg["vol"] = round(self.sound.volume, 2)
-        self.cfg["sound_on"] = self.sound.enabled
+        self.cfg["sound_on"] = bool(self.sound.sound_on)
         self.save_cfg()
 
     def set_topmost(self, on):

@@ -18,6 +18,8 @@ from datetime import datetime
 
 import requests
 
+from log import get_logger
+
 BALANCE_URL = "https://api.deepseek.com/user/balance"
 BALANCE_TTL_MS = 25000
 
@@ -64,6 +66,9 @@ def _isfinite(v) -> bool:
 
 def compute_today_usage(data) -> dict | None:
     """平台用量响应 → (amount, tokens)。兼容两种响应结构。"""
+    if not isinstance(data, dict):
+        # 顶层是 list/str/None 等异常结构：安全返回，不抛 AttributeError
+        return None
     d = data
     if d and d.get("data") and isinstance(d["data"], dict):
         biz = d["data"].get("biz_data")
@@ -128,7 +133,8 @@ def write_ledger(path: str, led: dict) -> bool:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(led, f, ensure_ascii=False, indent=2)
         return True
-    except OSError:
+    except OSError as err:
+        get_logger().warning("账本写入失败: %s (%s)", path, err)
         return False
 
 
@@ -231,7 +237,8 @@ def fetch_usage(platform_token: str) -> dict:
         if u and _isfinite(u["amount"]):
             return {"amount": u["amount"], "tokens": u["tokens"]}
         return {"error": "no usage"}
-    except (requests.RequestException, ValueError) as err:
+    except (requests.RequestException, ValueError, AttributeError, TypeError, KeyError) as err:
+        get_logger().warning("平台用量接口异常: %s", err)
         return {"error": str(err)[:200]}
 
 
@@ -270,8 +277,19 @@ class BalanceEngine:
                     cached.update({"stale": True, "error": payload.get("error")})
                     payload = cached
                 elif not payload.get("transient"):
-                    print("[whale] balance error:", payload.get("code"), payload.get("error"))
+                    get_logger().warning("余额获取失败 code=%s: %s", payload.get("code"), payload.get("error"))
                 self._results.append(payload)
+        except Exception as ex:
+            # 关键兜底：任何未预期异常都必须变成一条结果，
+            # 否则 drain() 永远取不到东西，界面会永久停在「加载中」
+            get_logger().exception("余额刷新线程未捕获异常")
+            with self._lock:
+                self._results.append({
+                    "ok": False,
+                    "code": "INTERNAL",
+                    "transient": False,
+                    "error": "%s: %s" % (type(ex).__name__, ex),
+                })
         finally:
             with self._lock:
                 self._in_flight = False
