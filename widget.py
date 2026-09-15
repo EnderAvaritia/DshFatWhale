@@ -18,19 +18,20 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 import config
 from balance import BalanceEngine
-from config import app_dir, assets_dir, LEDGER_PATH
+from config import assets_dir, LEDGER_PATH
 from log import get_logger
 from menu import build_menu
 from sound import SoundManager
 
 BASE_H = 300          # 鲸鱼绘制高度（size=1.0 时）
-BUBBLE_H = 122        # 气泡区高度（窗口顶部）：4 行常驻气泡(约110px) + 余量
+BUBBLE_H = 122        # 气泡区高度（窗口顶部）：常驻气泡 4 行(约110px) + 余量
 MARGIN = 6
 TICK = 20             # ms，动画循环
 REFRESH_MS = 60000    # 自动刷新
 BUBBLE_MS = 5000      # 气泡最长显示
 ANIM_MS = 700         # 数字滚动时长
 DRAG_THRESHOLD = 6    # 拖拽判定像素
+MAX_BUBBLE_LINES = 6  # 气泡最多绘制行数（正常/错误态均 4 行；仅超长自定义文案触发截断）
 
 # ---- 台词表（用户可编辑，程序启动时读取）----
 LINE_MD_PATH = config.LINES_PATH  # 兼容旧引用；实际读取走 config.lines_path()
@@ -140,6 +141,21 @@ def load_line_groups(md_path=LINE_MD_PATH):
     return groups, drag, click, click_weight
 
 
+def cap_segments(segments, max_lines=MAX_BUBBLE_LINES):
+    """气泡分段的行数上限兜底。
+
+    正常态 4 行、错误态 4 行都不会触发；只有**超长自定义台词**或异常长的技术文案
+    才会被截断到 max_lines 行，并在最后一行加省略号，避免把气泡画出窗口。
+    纯函数，便于单测（与字体度量无关）。
+    """
+    if len(segments) <= max_lines:
+        return segments
+    kept = list(segments[:max_lines])
+    text, font, col = kept[-1]
+    kept[-1] = (text[:-1] + "…", font, col) if text else ("…", font, col)
+    return kept
+
+
 def fmt(amount, currency):
     if amount is None:
         return "--"
@@ -199,6 +215,8 @@ class WhaleWindow(QWidget):
         self.bubble_random = False
         self.bubble_inner = False
         self.bubble_lines = None   # [(text, style, color, wrap)]
+        self.bubble_segments = None  # 最近一次绘制实际画出的分段（供自检）
+        self.bubble_truncated = False  # 最近一次绘制是否触发了行数兜底截断
         self.bubble_until = 0
         self.bubble_rect = QRectF()
 
@@ -310,6 +328,8 @@ class WhaleWindow(QWidget):
         key = self._resolve_key()
         if not key and manual:
             self.status = "error"
+            self.error_code = "NO_KEY"
+            self.stale = False
             self.message = "未配置 DEEPSEEK_API_KEY"
             self._refresh_bubble()
             self.update()
@@ -437,7 +457,9 @@ class WhaleWindow(QWidget):
         elif code in ("PARSE", "SHAPE"):
             tail = [("接口返回结构异常", "C", "#e0433f", False), ("详见 logs/whale.log", "C", "", False)]
         else:
-            tail = [(msg, "C", "#e0433f", True), ("详见 logs/whale.log", "C", "", False)]
+            # 技术性错误只给一行摘要（完整内容在 logs/whale.log），避免长文案撑破气泡
+            short = msg if len(msg) <= 12 else msg[:11] + "…"
+            tail = [(short, "C", "#e0433f", True), ("详见 logs/whale.log", "C", "", False)]
         return (head + tail)[:5]
 
     def content_lines(self):
@@ -453,16 +475,15 @@ class WhaleWindow(QWidget):
         usage = self.today_usage if self.today_usage is not None else None
         peak_line = ("当前时段：梁文峰", "C", "#e0433f", False) if self.is_peak \
             else ("当前时段：梁文谷", "C", "#2fa24c", False)
-        lines = [
-            ("DeepSeek 余额", "A", "", False),
+        # 网络抖动沿用最近余额时，在标题行标注"这不是实时值"——不额外占一行，
+        # 因为气泡区高度按 4 行设计（真实字体下 4 行已接近上限）
+        title = "DeepSeek 余额 · 网络抖动" if self.stale else "DeepSeek 余额"
+        return [
+            (title, "A", "", False),
             (fmt(self.shown if self.shown is not None else self.balance, self.currency), "B", "", False),
             ("今日已用 " + fmt(usage, self.currency), "C", "", False),
             peak_line,
         ]
-        if self.stale:
-            # 网络抖动沿用最近余额时，明确告诉用户这不是实时值
-            lines.append(("（网络抖动，显示最近一次余额）", "C", "", True))
-        return lines
 
     def show_bubble(self):
         """显示常驻余额气泡。"""
@@ -608,6 +629,13 @@ class WhaleWindow(QWidget):
                 segments.append((text, font, col))
 
         line_h = QFontMetrics(QFont("Microsoft YaHei UI", 15)).height()
+        # 安全网：行数上限兜底（正常内容不触发；超长文案截断加省略号，避免画出窗口被裁）
+        all_segments = segments
+        segments = cap_segments(segments)
+        self.bubble_truncated = len(segments) < len(all_segments)
+        self.bubble_segments = segments
+        if not segments:
+            return
         heights = [QFontMetrics(f).height() for _, f, _ in segments]
         line_h = max(heights) if heights else line_h
         bw = max(QFontMetrics(f).horizontalAdvance(t) for t, f, _ in segments) + 24

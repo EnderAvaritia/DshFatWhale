@@ -184,7 +184,7 @@ def _ps_quote(path: str) -> str:
 
 def set_autostart(widget, on: bool):
     """开机自启：Startup 目录快捷方式（同 dafeiyu-pet 实现）。"""
-    widget.cfg["autostart"] = bool(on)
+    prev = bool(widget.cfg.get("autostart", False))
     lnk = os.path.join(
         os.environ["APPDATA"], "Microsoft", "Windows",
         "Start Menu", "Programs", "Startup", "大肥鱼鲸鱼.lnk",
@@ -227,7 +227,7 @@ def set_autostart(widget, on: bool):
             get_logger().exception("开机自启设置失败 on=%s", on)
         except Exception:
             pass
-        widget.cfg["autostart"] = False
+        widget.cfg["autostart"] = prev
         widget.save_cfg()
         QMessageBox.warning(
             widget, "开机自启",
